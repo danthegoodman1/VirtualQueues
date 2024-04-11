@@ -9,6 +9,7 @@ var (
 	Env_KafkaSessionMs = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
 	Env_KafkaSeeds     = MustEnv("KAFKA_SEEDS")
 	Env_KafkaUsername  = os.Getenv("KAFKA_USER")
+	Env_NumPartitions  = MustEnvInt64("KAFKA_PARTITIONS")
 	Env_KafkaPassword  = os.Getenv("KAFKA_PASS")
 	Env_KafkaTLS       = os.Getenv("KAFKA_TLS") == "1"
 	Env_KafkaTLSCAPath = os.Getenv("KAFKA_TLS_CA_PATH")
