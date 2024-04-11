@@ -25,7 +25,8 @@ type (
 	// LogConsumer is a single consumer of log, belonging to a single consumer group.
 	// It also manages gossip participation
 	LogConsumer struct {
-		ConsumerGroup, Namespace, MutationTopic string
+		InstanceID    string
+		ConsumerGroup string
 
 		// MyPartitions are the partitions that are managed on this node
 		MyPartitions *partitions.Map
@@ -49,22 +50,20 @@ type (
 	}
 )
 
-func NewLogConsumer(ctx context.Context, namespace, consumerGroup string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(ctx context.Context, namespace, instanceID, consumerGroup string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
-		ConsumerGroup: consumerGroup,
-		Namespace:     namespace,
 		MyPartitions:  partitionsMap,
-		MutationTopic: formatMutationTopic(namespace),
 		closeChan:     make(chan struct{}, 1),
+		ConsumerGroup: consumerGroup,
+		InstanceID:    instanceID,
 	}
-	partitionTopic := formatPartitionTopic(namespace)
-	logger.Debug().Msgf("using mutation log %s and partition log %s for seeds %+v", consumer.MutationTopic, partitionTopic, seeds)
+	logger.Debug().Msgf("using mutation log %s and partition log %s for seeds %+v", utils.Env_KafkaTopic, seeds)
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(seeds...),
 		kgo.ClientID("virtual_queues"),
-		kgo.InstanceID(utils.Env_InstanceID),
+		kgo.InstanceID(instanceID),
 		kgo.ConsumerGroup(consumerGroup),
-		kgo.ConsumeTopics(consumer.MutationTopic),
+		kgo.ConsumeTopics(utils.Env_KafkaTopic),
 		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)), // force murmur2, same as in utils
 		kgo.SessionTimeout(time.Millisecond * time.Duration(sessionMS)),
 		// kgo.DisableAutoCommit(), // TODO: See comment, need listeners
@@ -105,7 +104,7 @@ func NewLogConsumer(ctx context.Context, namespace, consumerGroup string, seeds 
 	// First we should try to read from it
 	partOpts := []kgo.Opt{
 		kgo.SeedBrokers(seeds...),
-		kgo.ConsumeTopics(partitionTopic),
+		kgo.ConsumeTopics(utils.Env_KafkaTopic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), // always consume the first record
 	}
 	if utils.Env_KafkaUsername != "" && utils.Env_KafkaPassword != "" {
@@ -135,10 +134,6 @@ func NewLogConsumer(ctx context.Context, namespace, consumerGroup string, seeds 
 
 func formatMutationTopic(namespace string) string {
 	return fmt.Sprintf("firescroll_%s_mutations", namespace)
-}
-
-func formatPartitionTopic(namespace string) string {
-	return fmt.Sprintf("firescroll_%s_partitions", namespace)
 }
 
 func (lc *LogConsumer) Shutdown() error {

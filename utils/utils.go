@@ -86,8 +86,8 @@ func Murmur2(b []byte) uint32 {
 	return h
 }
 
-func GetPartition(k string) int32 {
-	return int32(Murmur2([]byte(k)) % uint32(Env_NumPartitions))
+func GetPartition(k string, numPartitions uint32) int32 {
+	return int32(Murmur2([]byte(k)) % numPartitions)
 }
 
 func Ptr[T any](t T) *T {

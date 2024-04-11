@@ -6,8 +6,10 @@ var (
 	Env_SleepSeconds = MustEnvOrDefaultInt64("SHUTDOWN_SLEEP_SEC", 0)
 
 	Env_InstanceID     = MustEnv("INSTANCE_ID")
+	Env_ConsumerGroup  = MustEnv("CONSUMER_GROUP")
+	Env_KafkaTopic     = os.Getenv("KAFKA_TOPIC")
 	Env_KafkaSessionMs = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
-	Env_KafkaSeeds     = MustEnv("KAFKA_SEEDS")
+	Env_KafkaSeeds     = os.Getenv("KAFKA_SEEDS")
 	Env_KafkaUsername  = os.Getenv("KAFKA_USER")
 	Env_NumPartitions  = MustEnvInt64("KAFKA_PARTITIONS")
 	Env_KafkaPassword  = os.Getenv("KAFKA_PASS")

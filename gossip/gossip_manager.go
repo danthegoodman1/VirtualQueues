@@ -20,8 +20,9 @@ var (
 
 type Manager struct {
 	// The partition ID
-	Node       *Node
-	broadcasts *memberlist.TransmitLimitedQueue
+	Node          *Node
+	AdvertiseAddr string
+	broadcasts    *memberlist.TransmitLimitedQueue
 
 	MemberList *memberlist.Memberlist
 
@@ -43,18 +44,18 @@ type Node struct {
 	LastUpdated      time.Time
 }
 
-func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
-	if utils.Env_AdvertiseAddr == "" {
+func NewGossipManager(pm *partitions.Map, advertiseAddr, gossipPeers string) (gm *Manager, err error) {
+	if advertiseAddr == "" {
 		logger.Warn().Msg("ADVERTISE_ADDR not provided, disabling gossip")
 		return nil, nil
 	}
-	advertiseHost, advertisePort, err := net.SplitHostPort(utils.Env_AdvertiseAddr)
+	advertiseHost, advertisePort, err := net.SplitHostPort(advertiseAddr)
 	if err != nil {
 		return nil, fmt.Errorf("error splitting advertise address: %w", err)
 	}
 
 	myNode := &Node{
-		ID:               utils.Env_AdvertiseAddr,
+		ID:               advertiseAddr,
 		AdvertiseAddress: advertisePort,
 		AdvertisePort:    advertiseHost,
 		LastUpdated:      time.Now(),
@@ -67,10 +68,11 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 		broadcastTicker:  time.NewTicker(time.Millisecond * time.Duration(utils.Env_GossipBroadcastMS)),
 		remotePartitions: map[int32]string{},
 		remotePartMu:     &sync.RWMutex{},
+		AdvertiseAddr:    advertiseAddr,
 	}
 
 	var config *memberlist.Config
-	if strings.Contains(utils.Env_AdvertiseAddr, "localhost") {
+	if strings.Contains(advertiseAddr, "localhost") {
 		config = memberlist.DefaultLocalConfig()
 	} else {
 		config = memberlist.DefaultLANConfig()
@@ -89,7 +91,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 		mu:            &sync.RWMutex{},
 		items:         map[string]string{},
 	}
-	config.Name = utils.Env_AdvertiseAddr
+	config.Name = advertiseAddr
 
 	gm.MemberList, err = memberlist.Create(config)
 	if err != nil {
@@ -97,7 +99,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 		return nil, err
 	}
 
-	existingMembers := strings.Split(utils.Env_GossipPeers, ",")
+	existingMembers := strings.Split(gossipPeers, ",")
 	if len(existingMembers) > 0 && existingMembers[0] != "" {
 		// Join existing nodes
 		joinedHosts, err := gm.MemberList.Join(existingMembers)
@@ -127,7 +129,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 
 func (gm *Manager) broadcastAdvertiseMessage() {
 	b, err := json.Marshal(Message{
-		Addr:       utils.Env_AdvertiseAddr,
+		Addr:       gm.AdvertiseAddr,
 		Partitions: partitions.ListPartitions(gm.MyPartitions),
 		MsgType:    AdvertiseMessage,
 	})
@@ -229,7 +231,7 @@ func (gm *Manager) GetPartitionsMap() (partMap map[int32]string) {
 	}
 	// TODO: check whether above includes self
 	for _, partition := range partitions.ListPartitions(gm.MyPartitions) {
-		partMap[partition] = utils.Env_AdvertiseAddr
+		partMap[partition] = gm.AdvertiseAddr
 	}
 
 	return
