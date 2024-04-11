@@ -199,17 +199,17 @@ func (gm *Manager) setRemotePartitions(newPartitions []int32, newAddr string) {
 }
 
 func (gm *Manager) removePartitionsForAddr(addr string) {
-	logger.Debug().Msgf("removing all partitions at %s", addr)
+	logger.Debug().Msgf("removing all partitions for %s", addr)
 	gm.remotePartMu.Lock()
 	defer gm.remotePartMu.Unlock()
 	// not sure if we can modify a map in place so being safe
-	var parts []int32
+	var toRemove []int32
 	for part, addrs := range gm.remotePartitions {
 		if addrs == addr {
-			parts = append(parts, part)
+			toRemove = append(toRemove, part)
 		}
 	}
-	for _, part := range parts {
+	for _, part := range toRemove {
 		delete(gm.remotePartitions, part)
 	}
 }
