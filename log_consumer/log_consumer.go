@@ -27,12 +27,12 @@ type (
 	LogConsumer struct {
 		ConsumerGroup, Namespace, MutationTopic string
 
-		// ManagedPartitions are the partitions that are managed on this node
-		Partitions  *partitions.Map
-		Client      *kgo.Client
-		AdminClient *kadm.Client
-		AdminTicker *time.Ticker
-		Ready       bool
+		// MyPartitions are the partitions that are managed on this node
+		MyPartitions *partitions.Map
+		Client       *kgo.Client
+		AdminClient  *kadm.Client
+		AdminTicker  *time.Ticker
+		Ready        bool
 
 		shuttingDown bool
 		closeChan    chan struct{}
@@ -53,7 +53,7 @@ func NewLogConsumer(ctx context.Context, namespace, consumerGroup string, seeds 
 	consumer := &LogConsumer{
 		ConsumerGroup: consumerGroup,
 		Namespace:     namespace,
-		Partitions:    partitionsMap,
+		MyPartitions:  partitionsMap,
 		MutationTopic: formatMutationTopic(namespace),
 		closeChan:     make(chan struct{}, 1),
 	}
@@ -206,12 +206,12 @@ func (lc *LogConsumer) topicInfoLoop() {
 		return
 	}
 	myPartitions := assigned.Topics[0].Partitions
-	news, gones := lo.Difference(myPartitions, partitions.ListPartitions(lc.Partitions))
+	news, gones := lo.Difference(myPartitions, partitions.ListPartitions(lc.MyPartitions))
 	logger.Debug().Msgf("total partitions (%d),  my partitions (%d)", partitionCount, len(myPartitions))
 	if len(news) > 0 {
 		logger.Info().Msgf("got new partitions: %+v", news)
 		for _, np := range news {
-			lc.Partitions.Store(np, true)
+			lc.MyPartitions.Store(np, true)
 		}
 	}
 	if len(gones) > 0 {
@@ -219,7 +219,7 @@ func (lc *LogConsumer) topicInfoLoop() {
 	}
 
 	for _, gonePart := range gones {
-		lc.Partitions.Delete(gonePart)
+		lc.MyPartitions.Delete(gonePart)
 	}
 
 	// Set the current partitions

@@ -25,7 +25,7 @@ type Manager struct {
 
 	MemberList *memberlist.Memberlist
 
-	Partitions *partitions.Map
+	MyPartitions *partitions.Map
 
 	// Map of remote addresses for a given partition
 	remotePartitions map[int32]string
@@ -62,7 +62,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 
 	gm = &Manager{
 		Node:             myNode,
-		Partitions:       pm,
+		MyPartitions:     pm,
 		closeChan:        make(chan struct{}, 1),
 		broadcastTicker:  time.NewTicker(time.Millisecond * time.Duration(utils.Env_GossipBroadcastMS)),
 		remotePartitions: map[int32]string{},
@@ -128,7 +128,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 func (gm *Manager) broadcastAdvertiseMessage() {
 	b, err := json.Marshal(Message{
 		Addr:       utils.Env_AdvertiseAddr,
-		Partitions: partitions.ListPartitions(gm.Partitions),
+		Partitions: partitions.ListPartitions(gm.MyPartitions),
 		MsgType:    AdvertiseMessage,
 	})
 	if err != nil {
@@ -218,5 +218,19 @@ func (gm *Manager) GetRemotePartitionAddr(partition int32) (addr string, exists 
 	gm.remotePartMu.RLock()
 	defer gm.remotePartMu.RUnlock()
 	addr, exists = gm.remotePartitions[partition]
+	return
+}
+
+func (gm *Manager) GetPartitionsMap() (partMap map[int32]string) {
+	gm.remotePartMu.RLock()
+	defer gm.remotePartMu.RUnlock()
+	for part, addr := range gm.remotePartitions {
+		partMap[part] = addr
+	}
+	// TODO: check whether above includes self
+	for _, partition := range partitions.ListPartitions(gm.MyPartitions) {
+		partMap[partition] = utils.Env_AdvertiseAddr
+	}
+
 	return
 }
