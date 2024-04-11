@@ -44,7 +44,7 @@ type Node struct {
 	LastUpdated      time.Time
 }
 
-func NewGossipManager(pm *partitions.Map, advertiseAddr, gossipPeers string) (gm *Manager, err error) {
+func NewGossipManager(pm *partitions.Map, advertiseAddr, gossipPeers string, gossipPort int) (gm *Manager, err error) {
 	if advertiseAddr == "" {
 		logger.Warn().Msg("ADVERTISE_ADDR not provided, disabling gossip")
 		return nil, nil
@@ -78,7 +78,7 @@ func NewGossipManager(pm *partitions.Map, advertiseAddr, gossipPeers string) (gm
 		config = memberlist.DefaultLANConfig()
 	}
 
-	config.BindPort = int(utils.Env_GossipPort)
+	config.BindPort = gossipPort
 	config.Events = &eventDelegate{
 		gm: gm,
 	}
@@ -171,7 +171,7 @@ func (gm *Manager) Shutdown() error {
 
 // setRemotePartitions sets the current partitions for an address, cleaning any changes
 func (gm *Manager) setRemotePartitions(newPartitions []int32, newAddr string) {
-	logger.Debug().Msgf("adding remote partitions %+v at %s", newPartitions, newAddr)
+	logger.Debug().Msgf("setting remote partitions %+v at %s", newPartitions, newAddr)
 
 	gm.remotePartMu.Lock()
 	defer gm.remotePartMu.Unlock()
@@ -223,7 +223,8 @@ func (gm *Manager) GetRemotePartitionAddr(partition int32) (addr string, exists 
 	return
 }
 
-func (gm *Manager) GetPartitionsMap() (partMap map[int32]string) {
+func (gm *Manager) GetPartitionsMap() map[int32]string {
+	partMap := map[int32]string{}
 	gm.remotePartMu.RLock()
 	defer gm.remotePartMu.RUnlock()
 	for part, addr := range gm.remotePartitions {
@@ -234,5 +235,5 @@ func (gm *Manager) GetPartitionsMap() (partMap map[int32]string) {
 		partMap[partition] = gm.AdvertiseAddr
 	}
 
-	return
+	return partMap
 }
