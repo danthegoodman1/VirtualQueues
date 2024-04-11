@@ -154,28 +154,28 @@ func (lc *LogConsumer) Shutdown() error {
 	return nil
 }
 
-func (consumer *LogConsumer) pollTopicInfo() {
+func (lc *LogConsumer) pollTopicInfo() {
 	// Get the actual partitions
 	for {
 		select {
-		case <-consumer.AdminTicker.C:
-			consumer.topicInfoLoop()
-		case <-consumer.closeChan:
+		case <-lc.AdminTicker.C:
+			lc.topicInfoLoop()
+		case <-lc.closeChan:
 			logger.Debug().Msg("poll topic info received on close chan, exiting")
 			return
 		}
 	}
 }
 
-func (consumer *LogConsumer) topicInfoLoop() {
+func (lc *LogConsumer) topicInfoLoop() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
-	resp, err := consumer.AdminClient.DescribeGroups(ctx, consumer.ConsumerGroup)
+	resp, err := lc.AdminClient.DescribeGroups(ctx, lc.ConsumerGroup)
 	if err != nil {
 		logger.Error().Err(err).Msg("error describing groups")
 		return
 	}
-	memberID, _ := consumer.Client.GroupMetadata()
+	memberID, _ := lc.Client.GroupMetadata()
 	if len(resp.Sorted()) == 0 {
 		logger.Warn().Msg("did not get any groups yet for group metadata")
 		return
@@ -204,17 +204,17 @@ func (consumer *LogConsumer) topicInfoLoop() {
 
 	assigned, _ := member.Assigned.AsConsumer()
 	if len(assigned.Topics) == 0 {
-		consumer.Ready = false
+		lc.Ready = false
 		logger.Warn().Interface("assigned", assigned).Msg("did not find any assigned topics, can't make changes")
 		return
 	}
 	myPartitions := assigned.Topics[0].Partitions
-	news, gones := lo.Difference(myPartitions, partitions.ListPartitions(consumer.Partitions))
+	news, gones := lo.Difference(myPartitions, partitions.ListPartitions(lc.Partitions))
 	logger.Debug().Msgf("total partitions (%d),  my partitions (%d)", partitionCount, len(myPartitions))
 	if len(news) > 0 {
 		logger.Info().Msgf("got new partitions: %+v", news)
 		for _, np := range news {
-			consumer.Partitions.Store(np, true)
+			lc.Partitions.Store(np, true)
 		}
 	}
 	if len(gones) > 0 {
@@ -222,7 +222,7 @@ func (consumer *LogConsumer) topicInfoLoop() {
 	}
 
 	for _, gonePart := range gones {
-		consumer.Partitions.Delete(gonePart)
+		lc.Partitions.Delete(gonePart)
 	}
 
 	// Set the current partitions
