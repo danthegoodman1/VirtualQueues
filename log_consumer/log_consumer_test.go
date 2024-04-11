@@ -1,21 +1,26 @@
 package log_consumer
 
 import (
-	"fmt"
-	"github.com/danthegoodman1/VirtualQueues/utils"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/danthegoodman1/VirtualQueues/partitions"
 	"testing"
+	"time"
 )
 
-func TestPartition(t *testing.T) {
-	input := "blah"
+func TestGettingPartitions(t *testing.T) {
+	topic := "testing"
+	pm1 := partitions.Map{}
+	pm2 := partitions.Map{}
+	lc1, err := NewLogConsumer("lc1", "cg1", topic, []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	part := kgo.StickyKeyPartitioner(nil).ForTopic("blah").Partition(&kgo.Record{
-		Key: []byte(input),
-	}, 256)
+	lc2, err := NewLogConsumer("lc2", "cg1", topic, []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	fmt.Println("part", part)
-
-	partm := utils.Murmur2([]byte(input))
-	fmt.Println("partm", partm%256)
+	time.Sleep(time.Second * 5)
+	t.Log(partitions.ListPartitions(lc1.MyPartitions))
+	t.Log(partitions.ListPartitions(lc2.MyPartitions))
 }

@@ -5,8 +5,8 @@ import "os"
 var (
 	Env_SleepSeconds = MustEnvOrDefaultInt64("SHUTDOWN_SLEEP_SEC", 0)
 
-	Env_InstanceID     = MustEnv("INSTANCE_ID")
-	Env_ConsumerGroup  = MustEnv("CONSUMER_GROUP")
+	Env_InstanceID     = os.Getenv("INSTANCE_ID")
+	Env_ConsumerGroup  = os.Getenv("CONSUMER_GROUP")
 	Env_KafkaTopic     = os.Getenv("KAFKA_TOPIC")
 	Env_KafkaSessionMs = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
 	Env_KafkaSeeds     = os.Getenv("KAFKA_SEEDS")

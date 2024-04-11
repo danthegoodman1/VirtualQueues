@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
+	"github.com/rs/zerolog"
 	"time"
 
 	"github.com/danthegoodman1/VirtualQueues/gologger"
@@ -50,20 +51,21 @@ type (
 	}
 )
 
-func NewLogConsumer(ctx context.Context, namespace, instanceID, consumerGroup string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+// sessionMS must be above 2 seconds (default 60_000)
+func NewLogConsumer(instanceID, consumerGroup, topic string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:  partitionsMap,
 		closeChan:     make(chan struct{}, 1),
 		ConsumerGroup: consumerGroup,
 		InstanceID:    instanceID,
 	}
-	logger.Debug().Msgf("using mutation log %s and partition log %s for seeds %+v", utils.Env_KafkaTopic, seeds)
+	logger.Debug().Msgf("using partition log %s for seeds %+v", topic, seeds)
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(seeds...),
 		kgo.ClientID("virtual_queues"),
 		kgo.InstanceID(instanceID),
 		kgo.ConsumerGroup(consumerGroup),
-		kgo.ConsumeTopics(utils.Env_KafkaTopic),
+		kgo.ConsumeTopics(topic),
 		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)), // force murmur2, same as in utils
 		kgo.SessionTimeout(time.Millisecond * time.Duration(sessionMS)),
 		// kgo.DisableAutoCommit(), // TODO: See comment, need listeners
@@ -94,35 +96,11 @@ func NewLogConsumer(ctx context.Context, namespace, instanceID, consumerGroup st
 		opts...,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error in kgo.NewClient (mutations): %w", err)
+		return nil, fmt.Errorf("error in kgo.NewClient: %w", err)
 	}
 	consumer.Client = cl
 	consumer.AdminClient = kadm.NewClient(cl)
 	consumer.AdminTicker = time.NewTicker(time.Second * 2)
-
-	// Verify the partitions
-	// First we should try to read from it
-	partOpts := []kgo.Opt{
-		kgo.SeedBrokers(seeds...),
-		kgo.ConsumeTopics(utils.Env_KafkaTopic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), // always consume the first record
-	}
-	if utils.Env_KafkaUsername != "" && utils.Env_KafkaPassword != "" {
-		partOpts = append(partOpts, kgo.SASL(scram.Auth{
-			User: utils.Env_KafkaUsername,
-			Pass: utils.Env_KafkaPassword,
-		}.AsSha256Mechanism()))
-	}
-	if utils.Env_KafkaTLS {
-		logger.Debug().Msg("using kafka TLS")
-		tlsCfg, err := tlscfg.New(
-			tlscfg.MaybeWithDiskCA(utils.Env_KafkaTLSCAPath, tlscfg.ForClient),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error in kgo.NewClient (partitions.tls): %w", err)
-		}
-		partOpts = append(partOpts, kgo.DialTLSConfig(tlsCfg))
-	}
 
 	logger.Debug().Msg("sleeping to let consumer group to register")
 	time.Sleep(time.Second)
@@ -130,10 +108,6 @@ func NewLogConsumer(ctx context.Context, namespace, instanceID, consumerGroup st
 	go consumer.pollTopicInfo()
 
 	return consumer, nil
-}
-
-func formatMutationTopic(namespace string) string {
-	return fmt.Sprintf("firescroll_%s_mutations", namespace)
 }
 
 func (lc *LogConsumer) Shutdown() error {
@@ -162,6 +136,10 @@ func (lc *LogConsumer) pollTopicInfo() {
 func (lc *LogConsumer) topicInfoLoop() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
+	logger := zerolog.Ctx(ctx)
+	logger.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Str("instanceID", lc.InstanceID)
+	})
 	resp, err := lc.AdminClient.DescribeGroups(ctx, lc.ConsumerGroup)
 	if err != nil {
 		logger.Error().Err(err).Msg("error describing groups")
