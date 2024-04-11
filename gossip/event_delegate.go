@@ -9,7 +9,7 @@ type eventDelegate struct {
 }
 
 func (ed *eventDelegate) NotifyJoin(node *memberlist.Node) {
-	logger.Debug().Msg("A node has joined: " + node.String())
+	logger.Debug().Str("nodeID", ed.gm.Node.ID).Msg("A node has joined: " + node.String())
 	if ed.gm.broadcasts != nil {
 		// Broadcast out advertise address and port
 		go ed.gm.broadcastAdvertiseMessage()
