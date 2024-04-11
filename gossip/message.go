@@ -6,7 +6,7 @@ const (
 	AdvertiseMessage MessageType = "advertise"
 )
 
-type GossipMessage struct {
+type Message struct {
 	MsgType MessageType
 
 	Addr       string  `json:",omitempty"`

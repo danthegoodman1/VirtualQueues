@@ -3,7 +3,6 @@ package log_consumer
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
 	"time"
@@ -19,8 +18,6 @@ import (
 )
 
 var (
-	ErrClientClosed = errors.New("client is closed")
-
 	logger = gologger.NewLogger()
 )
 

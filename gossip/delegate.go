@@ -56,7 +56,7 @@ func handleDelegateMsg(d *delegate, b []byte) {
 		return
 	}
 
-	var msg GossipMessage
+	var msg Message
 	err := json.Unmarshal(b, &msg)
 	if err != nil {
 		logger.Error().Err(err).Str("msg", string(b)).Msg("error unmarshaling gossip message")
@@ -65,15 +65,7 @@ func handleDelegateMsg(d *delegate, b []byte) {
 
 	switch msg.MsgType {
 	case AdvertiseMessage:
-		newParts, removedParts := d.GossipManager.checkForPartitionDifference(msg.Partitions, msg.Addr)
-		if len(removedParts) > 0 {
-			logger.Trace().Msgf("remote addr %s dropped partitions %+v", msg.Addr, removedParts)
-			d.GossipManager.removeRemotePartitions(removedParts, msg.Addr)
-		}
-		if len(newParts) > 0 {
-			logger.Trace().Msgf("remote addr %s added partitions %+v", msg.Addr, newParts)
-			d.GossipManager.addRemotePartitions(newParts, msg.Addr)
-		}
+		d.GossipManager.setRemotePartitions(msg.Partitions, msg.Addr)
 	default:
 		logger.Error().Str("msg", string(b)).Msg("unknown gossip message")
 	}

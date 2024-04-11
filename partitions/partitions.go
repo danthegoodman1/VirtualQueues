@@ -12,5 +12,5 @@ func ListPartitions(m *Map) (ids []int32) {
 		return true
 	})
 
-	return ids
+	return
 }

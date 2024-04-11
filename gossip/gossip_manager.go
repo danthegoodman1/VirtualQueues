@@ -2,13 +2,10 @@ package gossip
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/gologger"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
 	"github.com/danthegoodman1/VirtualQueues/utils"
-	"github.com/samber/lo"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -19,8 +16,6 @@ import (
 
 var (
 	logger = gologger.NewLogger()
-
-	ErrNoRemotePartitions = errors.New("no remote partitions")
 )
 
 type Manager struct {
@@ -33,7 +28,7 @@ type Manager struct {
 	Partitions *partitions.Map
 
 	// Map of remote addresses for a given partition
-	remotePartitions map[int32][]string
+	remotePartitions map[int32]string
 	remotePartMu     *sync.RWMutex
 
 	broadcastTicker *time.Ticker
@@ -70,7 +65,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 		Partitions:       pm,
 		closeChan:        make(chan struct{}, 1),
 		broadcastTicker:  time.NewTicker(time.Millisecond * time.Duration(utils.Env_GossipBroadcastMS)),
-		remotePartitions: map[int32][]string{},
+		remotePartitions: map[int32]string{},
 		remotePartMu:     &sync.RWMutex{},
 	}
 
@@ -131,7 +126,7 @@ func NewGossipManager(pm *partitions.Map) (gm *Manager, err error) {
 }
 
 func (gm *Manager) broadcastAdvertiseMessage() {
-	b, err := json.Marshal(GossipMessage{
+	b, err := json.Marshal(Message{
 		Addr:       utils.Env_AdvertiseAddr,
 		Partitions: partitions.ListPartitions(gm.Partitions),
 		MsgType:    AdvertiseMessage,
@@ -172,55 +167,34 @@ func (gm *Manager) Shutdown() error {
 	return nil
 }
 
-// checkForPartitionDifference will find new and removed partitions for a known address with a read lock to
-// reduce lock contention. partitions can be removed and added separately
-func (gm *Manager) checkForPartitionDifference(partitions []int32, addr string) (newPartitions []int32, removedPartitions []int32) {
-	gm.remotePartMu.RLock()
-	defer gm.remotePartMu.RUnlock()
+// setRemotePartitions sets the current partitions for an address, cleaning any changes
+func (gm *Manager) setRemotePartitions(newPartitions []int32, newAddr string) {
+	logger.Debug().Msgf("adding remote partitions %+v at %s", newPartitions, newAddr)
 
-	// Find new partitions
-	for partition, addrs := range gm.remotePartitions {
-		thinkAddrHasPart := lo.Contains(addrs, addr)
-		addrHasPart := lo.Contains(partitions, partition)
-
-		if thinkAddrHasPart && !addrHasPart {
-			removedPartitions = append(removedPartitions, partition)
-		} else if !thinkAddrHasPart && addrHasPart {
-			newPartitions = append(newPartitions, partition)
-		}
-	}
-	for _, partition := range partitions {
-		if _, exists := gm.remotePartitions[partition]; !exists {
-			newPartitions = append(newPartitions, partition)
-		}
-	}
-	return
-}
-
-func (gm *Manager) addRemotePartitions(partitions []int32, addr string) {
-	logger.Debug().Msgf("adding remote partitions %+v at %s", partitions, addr)
 	gm.remotePartMu.Lock()
 	defer gm.remotePartMu.Unlock()
-	for _, partition := range partitions {
-		if _, exists := gm.remotePartitions[partition]; !exists {
-			gm.remotePartitions[partition] = []string{addr}
-			return
-		}
-		gm.remotePartitions[partition] = append(gm.remotePartitions[partition], addr)
-	}
-}
 
-func (gm *Manager) removeRemotePartitions(partitions []int32, addr string) {
-	logger.Debug().Msgf("removing remote partition %+v at %s", partitions, addr)
-	gm.remotePartMu.Lock()
-	defer gm.remotePartMu.Unlock()
-	for _, partition := range partitions {
-		if _, exists := gm.remotePartitions[partition]; !exists {
-			return
+	// Temp map for O(1) lookup when iterating
+	newPartitionsMap := map[int32]bool{}
+	for _, part := range newPartitions {
+		newPartitionsMap[part] = true
+		gm.remotePartitions[part] = newAddr
+	}
+
+	// anything we find that we need to remove
+	var toRemove []int32
+
+	for partition, addr := range gm.remotePartitions {
+		if addr == newAddr {
+			if _, exists := newPartitionsMap[partition]; !exists {
+				toRemove = append(toRemove, partition)
+			}
 		}
-		gm.remotePartitions[partition] = lo.Filter(gm.remotePartitions[partition], func(item string, _ int) bool {
-			return item != addr
-		})
+	}
+
+	logger.Debug().Str("newAddr", newAddr).Ints32("toRemove", toRemove).Msg("removing partitions from map from gossip update")
+	for _, partition := range toRemove {
+		delete(gm.remotePartitions, partition)
 	}
 }
 
@@ -231,31 +205,18 @@ func (gm *Manager) removePartitionsForAddr(addr string) {
 	// not sure if we can modify a map in place so being safe
 	var parts []int32
 	for part, addrs := range gm.remotePartitions {
-		if lo.Contains(addrs, addr) {
+		if addrs == addr {
 			parts = append(parts, part)
 		}
 	}
 	for _, part := range parts {
-		gm.remotePartitions[part] = lo.Filter(gm.remotePartitions[part], func(item string, _ int) bool {
-			return item != addr
-		})
+		delete(gm.remotePartitions, part)
 	}
 }
 
-func (gm *Manager) getRemotePartitions(partition int32) []string {
+func (gm *Manager) GetRemotePartitionAddr(partition int32) (addr string, exists bool) {
 	gm.remotePartMu.RLock()
 	defer gm.remotePartMu.RUnlock()
-	return gm.remotePartitions[partition]
-}
-
-// GetRandomRemotePartition randomly select an address for the partition
-func (gm *Manager) GetRandomRemotePartition(partition int32) (string, error) {
-	gm.remotePartMu.RLock()
-	defer gm.remotePartMu.RUnlock()
-	remoteParts := gm.getRemotePartitions(partition)
-	if len(remoteParts) == 0 {
-		return "", ErrNoRemotePartitions
-	}
-	randInd := rand.Intn(len(remoteParts))
-	return remoteParts[randInd], nil
+	addr, exists = gm.remotePartitions[partition]
+	return
 }
