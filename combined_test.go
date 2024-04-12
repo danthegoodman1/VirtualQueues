@@ -41,4 +41,10 @@ func TestLogConsumerGossipManager(t *testing.T) {
 	t.Log("lc2", partitions.ListPartitions(lc2.MyPartitions))
 	t.Log("gm1 partition map", gm1.GetPartitionsMap())
 	t.Log("gm2 partition map", gm2.GetPartitionsMap())
+	if len(gm1.GetPartitionsMap()) != 4 {
+		t.Fatal("gm1 did not have 4 partitions, did you put in 4 partitions?")
+	}
+	if len(gm2.GetPartitionsMap()) != 4 {
+		t.Fatal("gm2 did not have 4 partitions, did you put in 4 partitions?")
+	}
 }
