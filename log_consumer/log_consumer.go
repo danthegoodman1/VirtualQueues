@@ -180,9 +180,9 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	g := errgroup.Group{}
 	fetches.EachPartition(func(part kgo.FetchTopicPartition) {
 		g.Go(func() error {
-			for _, record := range part.Records {
-				// TODO: check if offset record, if so store it
-			}
+			// for _, record := range part.Records {
+			// 	// TODO: check if offset record, if so store it
+			// }
 
 			// Mark the partition as available again
 			return nil

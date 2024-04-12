@@ -100,6 +100,8 @@ func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager) 
 	e.GET("/up", Up)
 	e.GET("/ready", s.Ready)
 
+	e.GET("/partitions", s.GetPartitionMap)
+
 	return s, nil
 }
 

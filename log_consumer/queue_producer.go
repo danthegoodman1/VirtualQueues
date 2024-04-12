@@ -3,7 +3,6 @@ package log_consumer
 import (
 	"context"
 	"errors"
-	"github.com/twmb/franz-go/pkg/kgo"
 	"strings"
 )
 
@@ -24,11 +23,11 @@ func (lc *LogConsumer) PublishRecord(ctx context.Context, queue string) error {
 
 func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partition int32, queue, consumer string, offset int64) {
 	// TODO: write record to kafka
-	record := &kgo.Record{
-		Key:   []byte(queue),
-		Value: jsonB, // TODO: special encoding so first few bytes we can tell if consumer offset record
-		Topic: lc.topic,
-	}
+	// record := &kgo.Record{
+	// 	Key:   []byte(queue),
+	// 	Value: jsonB, // TODO: special encoding so first few bytes we can tell if consumer offset record
+	// 	Topic: lc.topic,
+	// }
 	lc.Client.ProduceSync(ctx)
 	ck := createConsumerKey(queue, consumer)
 	_, stored := lc.partitionConsumers.LoadOrStore(ck, partition)

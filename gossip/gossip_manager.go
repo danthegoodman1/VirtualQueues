@@ -230,7 +230,7 @@ func (gm *Manager) GetPartitionsMap() map[int32]string {
 	for part, addr := range gm.remotePartitions {
 		partMap[part] = addr
 	}
-	// TODO: check whether above includes self
+	// Remote partitions does not include self, copy that in
 	for _, partition := range partitions.ListPartitions(gm.MyPartitions) {
 		partMap[partition] = gm.AdvertiseAddr
 	}
