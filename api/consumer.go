@@ -74,8 +74,35 @@ type ConsumerAckRequest struct {
 	AllowRewind bool
 }
 
+// ConsumerAck
+// There is a chance that this check fails because the memory cache was not filled before an ack
+// request came in (and thus seen as empty), but that's on the consumer to manage anyway, and it
+// will probably read it in quickly before a liveness probe marks the instance as alive anyway
 func (s *HTTPServer) ConsumerAck(c echo.Context) error {
-	//  TODO: Get current consumer offset if exists, if exists, check whether we are moving backward
-	// There is a chance that this check fails because the memory cache was not filled before an ack request came in (and thus seen as empty), but that's on the consumer to manage anyway
-	return c.NoContent(http.StatusNotImplemented)
+	ctx := c.Request().Context()
+	var reqBody ConsumerAckRequest
+	if err := ValidateRequest(c, &reqBody); err != nil {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+
+	// Verify this is the right partition for the queue
+	partition := utils.GetPartition(reqBody.Queue, s.NumPartitions)
+	if _, exists := s.lc.MyPartitions.Load(partition); !exists {
+		return c.String(http.StatusConflict, "node is not assigned queue partition")
+	}
+
+	// Get current consumer offset if exists, if exists, check whether we are moving backward
+	existingOffset := s.lc.GetConsumerOffset(reqBody.Queue, reqBody.Consumer)
+	if existingOffset != nil && existingOffset.Offset < reqBody.Offset && !reqBody.AllowRewind {
+		// Not allows to rewind the ack
+		return c.String(http.StatusConflict, fmt.Sprintf("allow rewind not allowed for ack less than current (%d)", existingOffset.Offset))
+	}
+
+	// Otherwise we write it
+	err := s.lc.WritePartitionConsumerOffset(ctx, partition, reqBody.Queue, reqBody.Consumer, reqBody.Offset)
+	if err != nil {
+		return fmt.Errorf("error in WritePartitionConsumerOffset: %w", err)
+	}
+
+	return c.NoContent(http.StatusOK)
 }

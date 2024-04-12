@@ -66,7 +66,7 @@ type (
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(ctx context.Context, instanceID, consumerGroup, topic string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, topic string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,

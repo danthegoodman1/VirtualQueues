@@ -130,9 +130,9 @@ func Up(c echo.Context) error {
 	return c.String(http.StatusOK, "ok")
 }
 
-func (h *HTTPServer) Ready(c echo.Context) error {
+func (s *HTTPServer) Ready(c echo.Context) error {
 	return c.String(
-		lo.Ternary(h.lc.Ready, http.StatusOK, http.StatusInternalServerError),
-		lo.Ternary(h.lc.Ready, "ok", "no partitions"),
+		lo.Ternary(s.lc.Ready, http.StatusOK, http.StatusInternalServerError),
+		lo.Ternary(s.lc.Ready, "ok", "no partitions"),
 	)
 }
