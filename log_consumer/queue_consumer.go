@@ -31,16 +31,15 @@ func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition
 	// Create new dynamic client
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(lc.seedBrokers...),
+		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
+			lc.topic: {
+				partition: kgo.NewOffset().At(offset),
+			},
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("error in kgo.NewClient: %w", err)
 	}
-
-	client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		lc.topic: {
-			partition: kgo.NewOffset().At(offset),
-		},
-	})
 
 	fetches := client.PollFetches(ctx)
 	err = fetches.Err()
