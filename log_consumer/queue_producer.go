@@ -2,6 +2,7 @@ package log_consumer
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -18,9 +19,14 @@ func (lc *LogConsumer) PublishRecord(ctx context.Context, queue string, recordVa
 		return ErrQueueNameHasReservedSeq
 	}
 
+	vr := VirtualRecord{
+		Queue:  queue,
+		Record: base64.StdEncoding.EncodeToString([]byte(recordVal)),
+	}
+
 	record := &kgo.Record{
 		Key:   []byte(queue),
-		Value: []byte(recordVal),
+		Value: vr.MustEncode(),
 		Topic: lc.topic,
 	}
 

@@ -1,11 +1,10 @@
 package api
 
 import (
-	"encoding/base64"
 	"fmt"
+	"github.com/danthegoodman1/VirtualQueues/log_consumer"
 	"github.com/danthegoodman1/VirtualQueues/utils"
 	"github.com/labstack/echo/v4"
-	"github.com/twmb/franz-go/pkg/kgo"
 	"net/http"
 )
 
@@ -17,7 +16,7 @@ type GetRecordsRequest struct {
 	MaxRecords *int64
 }
 
-type recordWithOffset struct {
+type encodedRecordWithOffset struct {
 	Offset int64 `json:"o"`
 	// base64 encoded bytes
 	Record string `json:"r"`
@@ -49,11 +48,12 @@ func (s *HTTPServer) GetRecords(c echo.Context) error {
 		}
 	}
 
-	var records []recordWithOffset
-	err := s.lc.ConsumePartitionFromOffset(ctx, partition, offset, utils.Deref(reqBody.MaxRecords, 10), func(record *kgo.Record) error {
-		records = append(records, recordWithOffset{
+	var records []encodedRecordWithOffset
+	err := s.lc.ConsumeQueueFromOffset(ctx, reqBody.Queue, partition, offset, utils.Deref(reqBody.MaxRecords, 10), func(record log_consumer.VirtualRecordWithOffset) error {
+
+		records = append(records, encodedRecordWithOffset{
 			Offset: record.Offset,
-			Record: base64.StdEncoding.EncodeToString(record.Value),
+			Record: record.Record,
 		})
 		return nil
 	})

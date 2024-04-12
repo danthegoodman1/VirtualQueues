@@ -28,7 +28,27 @@ func (lc *LogConsumer) DropPartitionConsumers(partition int32) {
 	}
 }
 
-func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition int32, offset, maxRecords int64, recordHandler func(record *kgo.Record) error) error {
+type VirtualRecord struct {
+	Queue string `json:"q"`
+	// base64 encoded bytes
+	Record string `json:"r"`
+}
+
+func (vr VirtualRecord) MustEncode() []byte {
+	b, err := json.Marshal(vr)
+	if err != nil {
+		panic(err)
+	}
+
+	return b
+}
+
+type VirtualRecordWithOffset struct {
+	VirtualRecord
+	Offset int64
+}
+
+func (lc *LogConsumer) ConsumeQueueFromOffset(ctx context.Context, queue string, partition int32, offset, maxRecords int64, recordHandler func(record VirtualRecordWithOffset) error) error {
 	// Create new dynamic client
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(lc.seedBrokers...),
@@ -51,11 +71,27 @@ func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition
 	iter := fetches.RecordIter()
 	i := int64(0)
 	for !iter.Done() && i < maxRecords {
-		err = recordHandler(iter.Next())
+		rec := iter.Next()
+
+		var vr VirtualRecord
+		err := json.Unmarshal(rec.Value, &vr)
 		if err != nil {
-			return fmt.Errorf("error in recordHandler: %w", err)
+			logger.Debug().Msg("failed to unmarshal consumer record, continuing")
 		}
-		i++
+
+		if vr.Queue == queue && vr.Record != "" {
+			// This is probably a virtual record
+			err = recordHandler(VirtualRecordWithOffset{
+				VirtualRecord: vr,
+				Offset:        rec.Offset,
+			})
+			if err != nil {
+				return fmt.Errorf("error in recordHandler: %w", err)
+			}
+			// Only count if this is a record from their queue
+			i++
+		}
+
 	}
 
 	return nil

@@ -2,13 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/gossip"
 	"github.com/danthegoodman1/VirtualQueues/log_consumer"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
 	"github.com/danthegoodman1/VirtualQueues/utils"
 	"github.com/samber/lo"
-	"github.com/twmb/franz-go/pkg/kgo"
 	"testing"
 	"time"
 )
@@ -81,8 +82,12 @@ func TestSimpleSequence(t *testing.T) {
 
 	// Consume some foundRecords
 	foundRecords := 0
-	err = part0LC.ConsumePartitionFromOffset(context.Background(), partition, 0, 2, func(record *kgo.Record) error {
-		t.Log("got record", record.Offset, string(record.Value))
+	err = part0LC.ConsumeQueueFromOffset(context.Background(), queue, partition, 0, 2, func(record log_consumer.VirtualRecordWithOffset) error {
+		b, err := base64.StdEncoding.DecodeString(record.Record)
+		if err != nil {
+			return fmt.Errorf("error in DecodeString: %w", err)
+		}
+		t.Log("got record", record.Offset, string(b))
 		foundRecords++
 		return nil
 	})
@@ -113,8 +118,12 @@ func TestSimpleSequence(t *testing.T) {
 	}
 
 	foundRecords = 0
-	err = part0LC.ConsumePartitionFromOffset(context.Background(), partition, consumerOffset.Offset, 2, func(record *kgo.Record) error {
-		t.Log("got record", record.Offset, string(record.Value))
+	err = part0LC.ConsumeQueueFromOffset(context.Background(), queue, partition, consumerOffset.Offset, 2, func(record log_consumer.VirtualRecordWithOffset) error {
+		b, err := base64.StdEncoding.DecodeString(record.Record)
+		if err != nil {
+			return fmt.Errorf("error in DecodeString: %w", err)
+		}
+		t.Log("got record", record.Offset, string(b))
 		foundRecords++
 		return nil
 	})

@@ -190,10 +190,7 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 				}
 
 				if consumerRecord.Consumer != "" && consumerRecord.Queue != "" && consumerRecord.Offset > 0 {
-					// This is probably a consumer reccord
-					// TODO: improve this with better encoding
-					fmt.Println("got consumer offset record", consumerRecord, time.Now().Format(time.RFC3339))
-					// This is safe to set if lower because writing offset enforces they intentionally set it low
+					// This is probably a consumer record
 					consumerMap[consumerRecord.Consumer] = consumerRecord
 				}
 			}
