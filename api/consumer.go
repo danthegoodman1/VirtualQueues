@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/utils"
 	"github.com/labstack/echo/v4"
@@ -14,6 +15,12 @@ type GetRecordsRequest struct {
 	Offset   *int64
 	// Default 10
 	MaxRecords *int64
+}
+
+type recordWithOffset struct {
+	Offset int64 `json:"o"`
+	// base64 encoded bytes
+	Record string `json:"r"`
 }
 
 func (s *HTTPServer) GetRecords(c echo.Context) error {
@@ -42,9 +49,12 @@ func (s *HTTPServer) GetRecords(c echo.Context) error {
 		}
 	}
 
-	var records []string
+	var records []recordWithOffset
 	err := s.lc.ConsumePartitionFromOffset(ctx, partition, offset, utils.Deref(reqBody.MaxRecords, 10), func(record *kgo.Record) {
-		// TODO: store record in mem
+		records = append(records, recordWithOffset{
+			Offset: record.Offset,
+			Record: base64.StdEncoding.EncodeToString(record.Value),
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("error in ConsumerPartitionFromOffset (offset=%d, partition=%d, queue=%s): %w", offset, partition, reqBody.Queue, err)
