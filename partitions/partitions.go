@@ -3,6 +3,7 @@ package partitions
 import "github.com/danthegoodman1/VirtualQueues/syncx"
 
 type (
+	// bool value is whether they are ready
 	Map = syncx.Map[int32, bool]
 )
 

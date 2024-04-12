@@ -14,6 +14,7 @@ require (
 	github.com/twmb/tlscfg v1.2.1
 	golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8
 	golang.org/x/net v0.24.0
+	golang.org/x/sync v0.7.0
 )
 
 require (
