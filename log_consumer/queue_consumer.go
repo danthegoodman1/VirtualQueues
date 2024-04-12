@@ -56,3 +56,38 @@ func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition
 
 	return nil
 }
+
+func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partition int32, queue, consumer string, offset int64) {
+	// TODO: write record to kafka
+	// record := &kgo.Record{
+	// 	Key:   []byte(queue),
+	// 	Value: jsonB, // TODO: special encoding so first few bytes we can tell if consumer offset record
+	// 	Topic: lc.topic,
+	// }
+	lc.Client.ProduceSync(ctx)
+	ck := createConsumerKey(queue, consumer)
+	_, stored := lc.partitionConsumers.LoadOrStore(ck, partition)
+
+	lc.consumerOffsetsMu.Lock()
+	defer lc.consumerOffsetsMu.Unlock()
+
+	if stored {
+		// New consumer
+		lc.consumerOffsets[ck] = &ConsumerOffset{
+			Offset: offset,
+		}
+	} else {
+		lc.consumerOffsets[ck].Offset = offset
+	}
+}
+
+func (lc *LogConsumer) GetConsumerOffset(queue, consumer string) *ConsumerOffset {
+	ck := createConsumerKey(queue, consumer)
+	lc.consumerOffsetsMu.Lock()
+	defer lc.consumerOffsetsMu.Unlock()
+	if offset, exists := lc.consumerOffsets[ck]; exists {
+		return offset
+	}
+
+	return nil
+}

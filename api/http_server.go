@@ -44,21 +44,23 @@ func ValidateRequest(c echo.Context, s interface{}) error {
 }
 
 type HTTPServer struct {
-	e  *echo.Echo
-	lc *log_consumer.LogConsumer
-	gm *gossip.Manager
+	e             *echo.Echo
+	lc            *log_consumer.LogConsumer
+	gm            *gossip.Manager
+	NumPartitions uint32
 }
 
-func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager) (*HTTPServer, error) {
+func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager, numPartitions uint32) (*HTTPServer, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
 		return nil, fmt.Errorf("error in net.Listen: %w", err)
 	}
 	e := echo.New()
 	s := &HTTPServer{
-		e:  e,
-		lc: lc,
-		gm: gm,
+		e:             e,
+		lc:            lc,
+		gm:            gm,
+		NumPartitions: numPartitions,
 	}
 	e.HideBanner = true
 	e.HidePort = true
@@ -100,7 +102,9 @@ func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager) 
 	e.GET("/up", Up)
 	e.GET("/ready", s.Ready)
 
-	e.GET("/partitions", s.GetPartitionMap)
+	e.POST("/get_partitions", s.GetPartitionMap)
+	e.POST("/get_records", s.GetRecords)
+	e.POST("/consumer_ack", s.ConsumerAck)
 
 	return s, nil
 }
