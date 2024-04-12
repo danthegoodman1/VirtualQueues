@@ -3,6 +3,7 @@ package log_consumer
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
@@ -180,11 +181,33 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	g := errgroup.Group{}
 	fetches.EachPartition(func(part kgo.FetchTopicPartition) {
 		g.Go(func() error {
-			// for _, record := range part.Records {
-			// 	// TODO: check if offset record, if so store it
-			// }
+			consumerMap := map[string]ConsumerOffsetRecord{}
+			for _, record := range part.Records {
+				var consumerRecord ConsumerOffsetRecord
+				err := json.Unmarshal(record.Value, &consumerRecord)
+				if err != nil {
+					logger.Debug().Msg("failed to unmarshal consumer record, continuing")
+				}
 
-			// Mark the partition as available again
+				if consumerRecord.Consumer != "" && consumerRecord.Queue != "" && consumerRecord.Offset > 0 {
+					// This is probably a consumer reccord
+					// TODO: improve this with better encoding
+					fmt.Println("got consumer offset record", consumerRecord, time.Now().Format(time.RFC3339))
+					// This is safe to set if lower because writing offset enforces they intentionally set it low
+					consumerMap[consumerRecord.Consumer] = consumerRecord
+				}
+			}
+
+			// Set the consumer offsets
+			lc.consumerOffsetsMu.Lock()
+			defer lc.consumerOffsetsMu.Unlock()
+			for _, offsetRecord := range consumerMap {
+				ck := createConsumerKey(offsetRecord.Queue, offsetRecord.Consumer)
+				lc.consumerOffsets[ck] = &ConsumerOffset{
+					Offset: offsetRecord.Offset,
+				}
+			}
+
 			return nil
 		})
 	})

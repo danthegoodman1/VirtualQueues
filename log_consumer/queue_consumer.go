@@ -2,6 +2,7 @@ package log_consumer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -27,7 +28,7 @@ func (lc *LogConsumer) DropPartitionConsumers(partition int32) {
 	}
 }
 
-func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition int32, offset, maxRecords int64, recordHandler func(record *kgo.Record)) error {
+func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition int32, offset, maxRecords int64, recordHandler func(record *kgo.Record) error) error {
 	// Create new dynamic client
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(lc.seedBrokers...),
@@ -50,28 +51,55 @@ func (lc *LogConsumer) ConsumePartitionFromOffset(ctx context.Context, partition
 	iter := fetches.RecordIter()
 	i := int64(0)
 	for !iter.Done() && i < maxRecords {
-		recordHandler(iter.Next())
+		err = recordHandler(iter.Next())
+		if err != nil {
+			return fmt.Errorf("error in recordHandler: %w", err)
+		}
 		i++
 	}
 
 	return nil
 }
 
-func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partition int32, queue, consumer string, offset int64) {
-	// TODO: write record to kafka
-	// record := &kgo.Record{
-	// 	Key:   []byte(queue),
-	// 	Value: jsonB, // TODO: special encoding so first few bytes we can tell if consumer offset record
-	// 	Topic: lc.topic,
-	// }
-	lc.Client.ProduceSync(ctx)
+type ConsumerOffsetRecord struct {
+	Offset   int64  `json:"o"`
+	Consumer string `json:"c"`
+	Queue    string `json:"q"`
+}
+
+func (c ConsumerOffsetRecord) MustEncode() []byte {
+	b, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+
+	return b
+}
+
+func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partition int32, queue, consumer string, offset int64) error {
+	offsetRecord := ConsumerOffsetRecord{
+		Consumer: consumer,
+		Offset:   offset,
+		Queue:    queue,
+	}
+	record := &kgo.Record{
+		Key:   []byte(queue),
+		Value: offsetRecord.MustEncode(), // TODO: special encoding so first few bytes we can tell if consumer offset record earier
+		Topic: lc.topic,
+	}
+	res := lc.Client.ProduceSync(ctx, record)
+	if err := res.FirstErr(); err != nil {
+		return fmt.Errorf("error in ProduceSync: %w", err)
+	}
+
+	// Store it in mem cache
 	ck := createConsumerKey(queue, consumer)
-	_, stored := lc.partitionConsumers.LoadOrStore(ck, partition)
+	_, exists := lc.partitionConsumers.LoadOrStore(ck, partition)
 
 	lc.consumerOffsetsMu.Lock()
 	defer lc.consumerOffsetsMu.Unlock()
 
-	if stored {
+	if !exists {
 		// New consumer
 		lc.consumerOffsets[ck] = &ConsumerOffset{
 			Offset: offset,
@@ -79,6 +107,7 @@ func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partiti
 	} else {
 		lc.consumerOffsets[ck].Offset = offset
 	}
+	return nil
 }
 
 func (lc *LogConsumer) GetConsumerOffset(queue, consumer string) *ConsumerOffset {

@@ -50,11 +50,12 @@ func (s *HTTPServer) GetRecords(c echo.Context) error {
 	}
 
 	var records []recordWithOffset
-	err := s.lc.ConsumePartitionFromOffset(ctx, partition, offset, utils.Deref(reqBody.MaxRecords, 10), func(record *kgo.Record) {
+	err := s.lc.ConsumePartitionFromOffset(ctx, partition, offset, utils.Deref(reqBody.MaxRecords, 10), func(record *kgo.Record) error {
 		records = append(records, recordWithOffset{
 			Offset: record.Offset,
 			Record: base64.StdEncoding.EncodeToString(record.Value),
 		})
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("error in ConsumerPartitionFromOffset (offset=%d, partition=%d, queue=%s): %w", offset, partition, reqBody.Queue, err)
@@ -75,6 +76,6 @@ type ConsumerAckRequest struct {
 
 func (s *HTTPServer) ConsumerAck(c echo.Context) error {
 	//  TODO: Get current consumer offset if exists, if exists, check whether we are moving backward
-
+	// There is a chance that this check fails because the memory cache was not filled before an ack request came in (and thus seen as empty), but that's on the consumer to manage anyway
 	return c.NoContent(http.StatusNotImplemented)
 }
