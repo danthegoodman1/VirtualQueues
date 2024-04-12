@@ -151,14 +151,15 @@ func (lc *LogConsumer) partitionRemoved(ctx context.Context, client *kgo.Client,
 // launchPollRecordLoop is launched in a goroutine
 func (lc *LogConsumer) launchPollRecordLoop() {
 	for !lc.shuttingDown {
-		err := lc.pollRecords(context.Background())
+		err := lc.pollConsumerOffsets(context.Background())
 		if err != nil {
 			logger.Error().Err(err).Msg("error polling for records")
 		}
 	}
 }
 
-func (lc *LogConsumer) pollRecords(c context.Context) error {
+// pollConsumerOffsets is where we poll for cacheable consumer offsets. When we have new records to poll for a partition, we disable the ability for consumers to ask for records, so they don't get ones that they might have already processed (if asking since the offset).
+func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	ctx, cancel := context.WithTimeout(c, time.Second*5)
 	defer cancel()
 	fetches := lc.Client.PollFetches(ctx)
@@ -179,12 +180,12 @@ func (lc *LogConsumer) pollRecords(c context.Context) error {
 	fetches.EachPartition(func(part kgo.FetchTopicPartition) {
 		lc.MyPartitions.Store(part.Partition, false) // store false so they can't poll while we get updates (this will cause consumers to spin)
 		g.Go(func() error {
+			defer lc.MyPartitions.Store(part.Partition, true)
 			for _, record := range part.Records {
 				// TODO: check if offset record, if so store it
 			}
 
 			// Mark the partition as available again
-			lc.MyPartitions.Store(part.Partition, true)
 			return nil
 		})
 	})
