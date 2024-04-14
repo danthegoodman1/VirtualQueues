@@ -5,16 +5,17 @@ import "os"
 var (
 	Env_SleepSeconds = MustEnvOrDefaultInt64("SHUTDOWN_SLEEP_SEC", 0)
 
-	Env_InstanceID     = os.Getenv("INSTANCE_ID")
-	Env_ConsumerGroup  = os.Getenv("CONSUMER_GROUP")
-	Env_KafkaTopic     = os.Getenv("KAFKA_TOPIC")
-	Env_KafkaSessionMs = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
-	Env_KafkaSeeds     = os.Getenv("KAFKA_SEEDS")
-	Env_KafkaUsername  = os.Getenv("KAFKA_USER")
-	Env_NumPartitions  = MustEnvInt64("KAFKA_PARTITIONS")
-	Env_KafkaPassword  = os.Getenv("KAFKA_PASS")
-	Env_KafkaTLS       = os.Getenv("KAFKA_TLS") == "1"
-	Env_KafkaTLSCAPath = os.Getenv("KAFKA_TLS_CA_PATH")
+	Env_InstanceID          = os.Getenv("INSTANCE_ID")
+	Env_ConsumerGroup       = os.Getenv("CONSUMER_GROUP")
+	Env_KafkaDataTopic      = os.Getenv("KAFKA_TOPIC")
+	Env_KafkaPartitionTopic = os.Getenv("KAFKA_PARTITION_TOPIC")
+	Env_KafkaSessionMs      = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
+	Env_KafkaSeeds          = os.Getenv("KAFKA_SEEDS")
+	Env_KafkaUsername       = os.Getenv("KAFKA_USER")
+	Env_NumPartitions       = MustEnvInt64("KAFKA_PARTITIONS")
+	Env_KafkaPassword       = os.Getenv("KAFKA_PASS")
+	Env_KafkaTLS            = os.Getenv("KAFKA_TLS") == "1"
+	Env_KafkaTLSCAPath      = os.Getenv("KAFKA_TLS_CA_PATH")
 
 	Env_APIPort       = EnvOrDefault("API_PORT", "8190")
 	Env_InternalPort  = EnvOrDefault("INTERNAL_PORT", "8191")

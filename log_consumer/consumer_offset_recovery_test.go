@@ -10,8 +10,9 @@ import (
 
 func TestConsumerOffsetRecovery(t *testing.T) {
 	topic := "testing"
+	partitionsTopic := "testing_p"
 	pm1 := partitions.Map{}
-	lc1, err := NewLogConsumer("lc1", "cg1", topic, []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
+	lc1, err := NewLogConsumer("lc1", "cg1", topic, partitionsTopic, "localhost:11000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestConsumerOffsetRecovery(t *testing.T) {
 
 	t.Log("restarting consumer")
 	pm1 = partitions.Map{}
-	lc1, err = NewLogConsumer("lc1", "cg1", topic, []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
+	lc1, err = NewLogConsumer("lc1", "cg1", topic, partitionsTopic, "localhost:12000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
 	if err != nil {
 		t.Fatal(err)
 	}
