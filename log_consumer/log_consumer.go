@@ -32,13 +32,18 @@ type (
 
 		// MyPartitions are the partitions that are managed on this node
 		MyPartitions *partitions.Map
-		Client       *kgo.Client
-		Ready        bool
+		// PartitionMap is all partitions
+		// Map of remote addresses for a given partition
+		remotePartitions map[int32]string
+		remotePartMu     *sync.RWMutex
+		Client           *kgo.Client
+		Ready            bool
 
 		shuttingDown bool
 
-		seedBrokers []string
-		topic       string
+		seedBrokers   []string
+		topic         string
+		advertiseAddr string
 
 		// Map of consumers to their offsets. Key is consumerKey
 		consumerOffsets   map[consumerKey]*ConsumerOffset
@@ -66,7 +71,7 @@ type (
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, topic string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, topic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
@@ -76,6 +81,9 @@ func NewLogConsumer(instanceID, consumerGroup, topic string, seeds []string, ses
 		consumerOffsets:    map[consumerKey]*ConsumerOffset{},
 		consumerOffsetsMu:  &sync.Mutex{},
 		partitionConsumers: syncx.Map[consumerKey, int32]{},
+		remotePartMu:       &sync.RWMutex{},
+		remotePartitions:   map[int32]string{},
+		advertiseAddr:      advertiseAddr,
 	}
 	logger.Debug().Msgf("using partition log %s for seeds %+v", topic, seeds)
 	opts := []kgo.Opt{
@@ -210,4 +218,20 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	})
 	err := g.Wait()
 	return err
+}
+
+func (lc *LogConsumer) GetPartitionsMap() map[int32]string {
+	partMap := map[int32]string{}
+	lc.remotePartMu.RLock()
+	defer lc.remotePartMu.RUnlock()
+	for part, addr := range lc.remotePartitions {
+		partMap[part] = addr
+	}
+
+	// Remote partitions does not include self, copy that in
+	for _, partition := range partitions.ListPartitions(lc.MyPartitions) {
+		partMap[partition] = lc.advertiseAddr
+	}
+
+	return partMap
 }

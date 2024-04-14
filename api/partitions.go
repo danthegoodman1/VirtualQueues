@@ -6,6 +6,6 @@ import (
 )
 
 func (s *HTTPServer) GetPartitionMap(c echo.Context) error {
-	partMap := s.gm.GetPartitionsMap()
+	partMap := s.lc.GetPartitionsMap()
 	return c.JSON(http.StatusOK, partMap)
 }
