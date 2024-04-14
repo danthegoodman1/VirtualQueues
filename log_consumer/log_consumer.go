@@ -32,13 +32,20 @@ type (
 
 		// MyPartitions are the partitions that are managed on this node
 		MyPartitions *partitions.Map
-		Client       *kgo.Client
-		Ready        bool
+		// PartitionMap is all partitions
+		// Map of remote addresses for a given partition
+		partitions       map[int32]string
+		partitionsMu     *sync.RWMutex
+		Client           *kgo.Client
+		PartitionsClient *kgo.Client
+		Ready            bool
 
 		shuttingDown bool
 
-		seedBrokers []string
-		topic       string
+		seedBrokers    []string
+		topic          string
+		partitionTopic string
+		advertiseAddr  string
 
 		// Map of consumers to their offsets. Key is consumerKey
 		consumerOffsets   map[consumerKey]*ConsumerOffset
@@ -66,18 +73,63 @@ type (
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, topic string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
 		InstanceID:         instanceID,
 		seedBrokers:        seeds,
 		topic:              topic,
+		partitionTopic:     partitionTopic,
 		consumerOffsets:    map[consumerKey]*ConsumerOffset{},
 		consumerOffsetsMu:  &sync.Mutex{},
 		partitionConsumers: syncx.Map[consumerKey, int32]{},
+		partitionsMu:       &sync.RWMutex{},
+		partitions:         map[int32]string{},
+		advertiseAddr:      advertiseAddr,
 	}
 	logger.Debug().Msgf("using partition log %s for seeds %+v", topic, seeds)
+
+	partitionsOps := []kgo.Opt{
+		kgo.SeedBrokers(seeds...),
+		kgo.ClientID("virtual_queues"),
+		kgo.InstanceID(instanceID),
+		kgo.ConsumeTopics(partitionTopic),
+		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)), // force murmur2, same as in utils
+		kgo.SessionTimeout(time.Millisecond * time.Duration(sessionMS)),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), // always reset offsets on connect
+	}
+	if utils.Env_KafkaUsername != "" && utils.Env_KafkaPassword != "" {
+		logger.Debug().Msg("using kafka auth")
+		partitionsOps = append(partitionsOps, kgo.SASL(scram.Auth{
+			User: utils.Env_KafkaUsername,
+			Pass: utils.Env_KafkaPassword,
+		}.AsSha256Mechanism()))
+	}
+	if utils.Env_KafkaTLS {
+		if utils.Env_KafkaTLSCAPath != "" {
+			logger.Debug().Msgf("using kafka TLS with CA path %s", utils.Env_KafkaTLSCAPath)
+			tlsCfg, err := tlscfg.New(
+				tlscfg.MaybeWithDiskCA(utils.Env_KafkaTLSCAPath, tlscfg.ForClient),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error in kgo.NewClient (mutations.tls): %w", err)
+			}
+			partitionsOps = append(partitionsOps, kgo.DialTLSConfig(tlsCfg))
+		} else {
+			logger.Debug().Msg("using kafka TLS")
+			partitionsOps = append(partitionsOps, kgo.DialTLSConfig(&tls.Config{}))
+		}
+	}
+	pcl, err := kgo.NewClient(
+		partitionsOps...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error in kgo.NewClient: %w", err)
+	}
+	consumer.PartitionsClient = pcl
+	go consumer.launchPollPartitionsLoop()
+
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(seeds...),
 		kgo.ClientID("virtual_queues"),
@@ -137,6 +189,23 @@ func (lc *LogConsumer) partitionAssigned(ctx context.Context, client *kgo.Client
 	for _, partitions := range added {
 		for _, partition := range partitions {
 			lc.MyPartitions.Store(partition, true)
+			// We only need to write assigned records, because someone else will always overwrite the partition
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			par := partitionAssignmentRecord{
+				AdvertiseAddr: lc.advertiseAddr,
+				Partition:     partition,
+			}
+			record := &kgo.Record{
+				Key:   []byte(lc.advertiseAddr),
+				Value: par.MustEncode(),
+				Topic: lc.partitionTopic,
+			}
+			res := lc.PartitionsClient.ProduceSync(ctx, record)
+			if err := res.FirstErr(); err != nil {
+				logger.Fatal().Err(err).Msg("PartitionsClient.ProduceSync")
+			}
+			logger.Debug().Msgf("Wrote my (%s) partition %d to partition topic (%s)", lc.advertiseAddr, partition, lc.partitionTopic)
 		}
 	}
 }
@@ -158,6 +227,65 @@ func (lc *LogConsumer) launchPollRecordLoop() {
 			logger.Error().Err(err).Msg("error polling for records")
 		}
 	}
+}
+
+// launchPollPartitionsLoop is launched in a goroutine
+func (lc *LogConsumer) launchPollPartitionsLoop() {
+	for !lc.shuttingDown {
+		err := lc.pollPartitions(context.Background())
+		if err != nil {
+			logger.Error().Err(err).Msg("error polling for records")
+		}
+	}
+}
+
+type partitionAssignmentRecord struct {
+	AdvertiseAddr string
+	Partition     int32
+}
+
+func (par partitionAssignmentRecord) MustEncode() []byte {
+	b, err := json.Marshal(par)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// pollPartitions is where we poll for cacheable consumer offsets
+func (lc *LogConsumer) pollPartitions(c context.Context) error {
+	ctx, cancel := context.WithTimeout(c, time.Second*5)
+	defer cancel()
+	fetches := lc.PartitionsClient.PollFetches(ctx)
+	if errs := fetches.Errors(); len(errs) > 0 {
+		if len(errs) == 1 {
+			if errors.Is(errs[0].Err, context.DeadlineExceeded) {
+				logger.Debug().Msg("got no records")
+				return nil
+			}
+			if errors.Is(errs[0].Err, kgo.ErrClientClosed) {
+				return nil
+			}
+		}
+		return fmt.Errorf("got errors when fetching: %+v :: %w", errs, ErrPollFetches)
+	}
+
+	g := errgroup.Group{}
+	fetches.EachRecord(func(record *kgo.Record) {
+		var partitionRecord partitionAssignmentRecord
+		err := json.Unmarshal(record.Value, &partitionRecord)
+		if err != nil {
+			logger.Fatal().Msg("failed to unmarshal partition assignment record, crashing")
+		}
+
+		// Update the map
+		lc.partitionsMu.Lock()
+		defer lc.partitionsMu.Unlock()
+		lc.partitions[partitionRecord.Partition] = partitionRecord.AdvertiseAddr
+		logger.Debug().Msgf("Wrote partition %d to addr %s", partitionRecord.Partition, partitionRecord.AdvertiseAddr)
+	})
+	err := g.Wait()
+	return err
 }
 
 // pollConsumerOffsets is where we poll for cacheable consumer offsets
@@ -210,4 +338,15 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	})
 	err := g.Wait()
 	return err
+}
+
+func (lc *LogConsumer) GetPartitionsMap() map[int32]string {
+	partMap := map[int32]string{}
+	lc.partitionsMu.RLock()
+	defer lc.partitionsMu.RUnlock()
+	for part, addr := range lc.partitions {
+		partMap[part] = addr
+	}
+
+	return partMap
 }

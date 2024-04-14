@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/danthegoodman1/VirtualQueues/gologger"
-	"github.com/danthegoodman1/VirtualQueues/gossip"
 	"github.com/danthegoodman1/VirtualQueues/log_consumer"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -46,11 +45,10 @@ func ValidateRequest(c echo.Context, s interface{}) error {
 type HTTPServer struct {
 	e             *echo.Echo
 	lc            *log_consumer.LogConsumer
-	gm            *gossip.Manager
 	NumPartitions uint32
 }
 
-func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager, numPartitions uint32) (*HTTPServer, error) {
+func StartServer(port string, lc *log_consumer.LogConsumer, numPartitions uint32) (*HTTPServer, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
 		return nil, fmt.Errorf("error in net.Listen: %w", err)
@@ -59,7 +57,6 @@ func StartServer(port string, lc *log_consumer.LogConsumer, gm *gossip.Manager, 
 	s := &HTTPServer{
 		e:             e,
 		lc:            lc,
-		gm:            gm,
 		NumPartitions: numPartitions,
 	}
 	e.HideBanner = true

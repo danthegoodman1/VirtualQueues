@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/danthegoodman1/VirtualQueues/api"
 	"github.com/danthegoodman1/VirtualQueues/gologger"
-	"github.com/danthegoodman1/VirtualQueues/gossip"
 	"github.com/danthegoodman1/VirtualQueues/internal"
 	"github.com/danthegoodman1/VirtualQueues/log_consumer"
 	"github.com/danthegoodman1/VirtualQueues/partitions"
@@ -34,14 +33,8 @@ func main() {
 
 	var logConsumer *log_consumer.LogConsumer
 	g.Go(func() (err error) {
-		logConsumer, err = log_consumer.NewLogConsumer(utils.Env_InstanceID, utils.Env_ConsumerGroup, utils.Env_KafkaTopic, strings.Split(utils.Env_KafkaSeeds, ","), utils.Env_KafkaSessionMs, &pm)
+		logConsumer, err = log_consumer.NewLogConsumer(utils.Env_InstanceID, utils.Env_ConsumerGroup, utils.Env_KafkaDataTopic, utils.Env_KafkaDataTopic, utils.Env_AdvertiseAddr, strings.Split(utils.Env_KafkaSeeds, ","), utils.Env_KafkaSessionMs, &pm)
 		return
-	})
-
-	var gm *gossip.Manager
-	g.Go(func() (err error) {
-		gm, err = gossip.NewGossipManager(&pm, utils.Env_AdvertiseAddr, utils.Env_GossipPeers, int(utils.Env_GossipPort))
-		return err
 	})
 
 	err := g.Wait()
@@ -49,7 +42,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("Error starting services, exiting")
 	}
 
-	apiServer, err := api.StartServer(utils.Env_APIPort, logConsumer, gm, uint32(utils.Env_NumPartitions))
+	apiServer, err := api.StartServer(utils.Env_APIPort, logConsumer, uint32(utils.Env_NumPartitions))
 	if err != nil {
 		logger.Fatal().Err(err).Msg("error starting api server")
 	}
@@ -68,13 +61,6 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(utils.Env_SleepSeconds))
 	defer cancel()
-
-	if gm != nil {
-		err = gm.Shutdown()
-		if err != nil {
-			logger.Error().Err(err).Msg("error shutting down gossip manager, other nodes might take some extra time to evict this node but otherwise it's fine")
-		}
-	}
 
 	g = errgroup.Group{}
 	g.Go(func() error {
