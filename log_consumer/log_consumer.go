@@ -340,6 +340,7 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	return err
 }
 
+// GetPartitionsMap creates a clone of the current map
 func (lc *LogConsumer) GetPartitionsMap() map[int32]string {
 	partMap := map[int32]string{}
 	lc.partitionsMu.RLock()
