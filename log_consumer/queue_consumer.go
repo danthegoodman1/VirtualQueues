@@ -53,7 +53,7 @@ func (lc *LogConsumer) ConsumeQueueFromOffset(ctx context.Context, queue string,
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(lc.seedBrokers...),
 		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
-			lc.topic: {
+			lc.dataTopic: {
 				partition: kgo.NewOffset().At(offset),
 			},
 		}),
@@ -120,10 +120,10 @@ func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partiti
 	}
 	record := &kgo.Record{
 		Key:   []byte(queue),
-		Value: offsetRecord.MustEncode(), // TODO: special encoding so first few bytes we can tell if consumer offset record earier
-		Topic: lc.topic,
+		Value: offsetRecord.MustEncode(),
+		Topic: lc.offsetTopic,
 	}
-	res := lc.Client.ProduceSync(ctx, record)
+	res := lc.DataClient.ProduceSync(ctx, record)
 	if err := res.FirstErr(); err != nil {
 		return fmt.Errorf("error in ProduceSync: %w", err)
 	}

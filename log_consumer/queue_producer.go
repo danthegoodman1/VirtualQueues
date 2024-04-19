@@ -27,10 +27,10 @@ func (lc *LogConsumer) PublishRecord(ctx context.Context, queue string, recordVa
 	record := &kgo.Record{
 		Key:   []byte(queue),
 		Value: vr.MustEncode(),
-		Topic: lc.topic,
+		Topic: lc.dataTopic,
 	}
 
-	res := lc.Client.ProduceSync(ctx, record)
+	res := lc.DataClient.ProduceSync(ctx, record)
 	if err := res.FirstErr(); err != nil {
 		return fmt.Errorf("error in ProductSync: %w", err)
 	}

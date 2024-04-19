@@ -33,7 +33,7 @@ func main() {
 
 	var logConsumer *log_consumer.LogConsumer
 	g.Go(func() (err error) {
-		logConsumer, err = log_consumer.NewLogConsumer(utils.Env_InstanceID, utils.Env_ConsumerGroup, utils.Env_KafkaDataTopic, utils.Env_KafkaDataTopic, utils.Env_AdvertiseAddr, strings.Split(utils.Env_KafkaSeeds, ","), utils.Env_KafkaSessionMs, &pm)
+		logConsumer, err = log_consumer.NewLogConsumer(utils.Env_InstanceID, utils.Env_ConsumerGroup, utils.Env_KafkaDataTopic, utils.Env_KafkaOffsetTopic, utils.Env_KafkaDataTopic, utils.Env_AdvertiseAddr, strings.Split(utils.Env_KafkaSeeds, ","), utils.Env_KafkaSessionMs, &pm)
 		return
 	})
 
