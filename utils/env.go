@@ -9,6 +9,7 @@ var (
 	Env_ConsumerGroup       = os.Getenv("CONSUMER_GROUP")
 	Env_KafkaDataTopic      = os.Getenv("KAFKA_TOPIC")
 	Env_KafkaPartitionTopic = os.Getenv("KAFKA_PARTITION_TOPIC")
+	Env_KafkaOffsetTopic    = os.Getenv("KAFKA_OFFSET_TOPIC")
 	Env_KafkaSessionMs      = MustEnvOrDefaultInt64("KAFKA_SESSION_MS", 60_000)
 	Env_KafkaSeeds          = os.Getenv("KAFKA_SEEDS")
 	Env_KafkaUsername       = os.Getenv("KAFKA_USER")
