@@ -36,14 +36,16 @@ type (
 		// Map of remote addresses for a given partition
 		partitions       map[int32]string
 		partitionsMu     *sync.RWMutex
-		Client           *kgo.Client
+		DataClient       *kgo.Client
+		OffsetClient     *kgo.Client
 		PartitionsClient *kgo.Client
 		Ready            bool
 
 		shuttingDown bool
 
 		seedBrokers    []string
-		topic          string
+		dataTopic      string
+		offsetTopic    string
 		partitionTopic string
 		advertiseAddr  string
 
@@ -73,13 +75,14 @@ type (
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
 		InstanceID:         instanceID,
 		seedBrokers:        seeds,
-		topic:              topic,
+		dataTopic:          dataTopic,
+		offsetTopic:        offsetTopic,
 		partitionTopic:     partitionTopic,
 		consumerOffsets:    map[consumerKey]*ConsumerOffset{},
 		consumerOffsetsMu:  &sync.Mutex{},
@@ -88,7 +91,7 @@ func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseA
 		partitions:         map[int32]string{},
 		advertiseAddr:      advertiseAddr,
 	}
-	logger.Debug().Msgf("using partition log %s for seeds %+v", topic, seeds)
+	logger.Debug().Msgf("using partition log %s for seeds %+v", dataTopic, seeds)
 
 	partitionsOps := []kgo.Opt{
 		kgo.SeedBrokers(seeds...),
@@ -135,7 +138,7 @@ func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseA
 		kgo.ClientID("virtual_queues"),
 		kgo.InstanceID(instanceID),
 		kgo.ConsumerGroup(consumerGroup),
-		kgo.ConsumeTopics(topic),
+		kgo.ConsumeTopics(dataTopic),
 		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)), // force murmur2, same as in utils
 		kgo.SessionTimeout(time.Millisecond * time.Duration(sessionMS)),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), // always reset offsets on connect
@@ -171,7 +174,42 @@ func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseA
 	if err != nil {
 		return nil, fmt.Errorf("error in kgo.NewClient: %w", err)
 	}
-	consumer.Client = cl
+	consumer.DataClient = cl
+
+	opts = []kgo.Opt{
+		kgo.SeedBrokers(seeds...),
+		kgo.InstanceID(instanceID),
+		kgo.ConsumeTopics(offsetTopic),
+	}
+	if utils.Env_KafkaUsername != "" && utils.Env_KafkaPassword != "" {
+		logger.Debug().Msg("using kafka auth")
+		opts = append(opts, kgo.SASL(scram.Auth{
+			User: utils.Env_KafkaUsername,
+			Pass: utils.Env_KafkaPassword,
+		}.AsSha256Mechanism()))
+	}
+	if utils.Env_KafkaTLS {
+		if utils.Env_KafkaTLSCAPath != "" {
+			logger.Debug().Msgf("using kafka TLS with CA path %s", utils.Env_KafkaTLSCAPath)
+			tlsCfg, err := tlscfg.New(
+				tlscfg.MaybeWithDiskCA(utils.Env_KafkaTLSCAPath, tlscfg.ForClient),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error in kgo.NewClient (mutations.tls): %w", err)
+			}
+			opts = append(opts, kgo.DialTLSConfig(tlsCfg))
+		} else {
+			logger.Debug().Msg("using kafka TLS")
+			opts = append(opts, kgo.DialTLSConfig(&tls.Config{}))
+		}
+	}
+	ocl, err := kgo.NewClient(
+		opts...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error in kgo.NewClient: %w", err)
+	}
+	consumer.OffsetClient = ocl
 
 	go consumer.launchPollRecordLoop()
 
@@ -181,17 +219,26 @@ func NewLogConsumer(instanceID, consumerGroup, topic, partitionTopic, advertiseA
 func (lc *LogConsumer) Shutdown() error {
 	logger.Info().Msg("shutting down log consumer")
 	lc.shuttingDown = true
-	lc.Client.CloseAllowingRebalance()
+	lc.DataClient.CloseAllowingRebalance()
 	return nil
 }
 
 func (lc *LogConsumer) partitionAssigned(ctx context.Context, client *kgo.Client, added map[string][]int32) {
 	for _, partitions := range added {
 		for _, partition := range partitions {
+			logger.Debug().Msgf("Partition assigned: %d", partition)
 			lc.MyPartitions.Store(partition, true)
+			// Tell the offset consumer to start consuming this topic
+			lc.OffsetClient.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+				lc.offsetTopic: {
+					partition: kgo.NewOffset().At(0),
+				},
+			})
+
 			// We only need to write assigned records, because someone else will always overwrite the partition
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
+
 			par := partitionAssignmentRecord{
 				AdvertiseAddr: lc.advertiseAddr,
 				Partition:     partition,
@@ -205,7 +252,7 @@ func (lc *LogConsumer) partitionAssigned(ctx context.Context, client *kgo.Client
 			if err := res.FirstErr(); err != nil {
 				logger.Fatal().Err(err).Msg("PartitionsClient.ProduceSync")
 			}
-			logger.Debug().Msgf("Wrote my (%s) partition %d to partition topic (%s)", lc.advertiseAddr, partition, lc.partitionTopic)
+			logger.Debug().Msgf("Wrote my (%s) partition %d to partition dataTopic (%s)", lc.advertiseAddr, partition, lc.partitionTopic)
 		}
 	}
 }
@@ -213,6 +260,12 @@ func (lc *LogConsumer) partitionAssigned(ctx context.Context, client *kgo.Client
 func (lc *LogConsumer) partitionRemoved(ctx context.Context, client *kgo.Client, lost map[string][]int32) {
 	for _, partitions := range lost {
 		for _, partition := range partitions {
+			logger.Debug().Msgf("Partition removed: %d", partition)
+			// Stop consuming the offsets for this partition
+			lc.OffsetClient.RemoveConsumePartitions(map[string][]int32{
+				lc.offsetTopic: {partition},
+			})
+
 			lc.MyPartitions.Delete(partition)
 			lc.DropPartitionConsumers(partition)
 		}
@@ -292,7 +345,7 @@ func (lc *LogConsumer) pollPartitions(c context.Context) error {
 func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 	ctx, cancel := context.WithTimeout(c, time.Second*5)
 	defer cancel()
-	fetches := lc.Client.PollFetches(ctx)
+	fetches := lc.OffsetClient.PollFetches(ctx)
 	if errs := fetches.Errors(); len(errs) > 0 {
 		if len(errs) == 1 {
 			if errors.Is(errs[0].Err, context.DeadlineExceeded) {

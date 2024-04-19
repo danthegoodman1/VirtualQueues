@@ -8,15 +8,16 @@ import (
 
 func TestGettingPartitions(t *testing.T) {
 	topic := "testing"
+	offsetsTopic := "testing_offsets"
 	partitionTopic := "testing_p"
 	pm1 := partitions.Map{}
 	pm2 := partitions.Map{}
-	lc1, err := NewLogConsumer("lc1", "cg1", topic, partitionTopic, "localhost:11000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
+	lc1, err := NewLogConsumer("lc1", "cg1", topic, offsetsTopic, partitionTopic, "localhost:11000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	lc2, err := NewLogConsumer("lc2", "cg1", topic, partitionTopic, "localhost:12000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm2)
+	lc2, err := NewLogConsumer("lc2", "cg1", topic, offsetsTopic, partitionTopic, "localhost:12000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm2)
 	if err != nil {
 		t.Fatal(err)
 	}

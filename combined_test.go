@@ -9,16 +9,17 @@ import (
 
 func TestCombined(t *testing.T) {
 	topic := "testing"
+	offsetsTopic := "testing_offsets"
 	partitionsTopic := "testing_p"
 	pm1 := partitions.Map{}
 	pm2 := partitions.Map{}
-	lc1, err := log_consumer.NewLogConsumer("lc1", "cg1", topic, partitionsTopic, "localhost:11000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
+	lc1, err := log_consumer.NewLogConsumer("lc1", "cg1", topic, offsetsTopic, partitionsTopic, "localhost:11000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lc1.Shutdown()
 
-	lc2, err := log_consumer.NewLogConsumer("lc2", "cg1", topic, partitionsTopic, "localhost:12000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm2)
+	lc2, err := log_consumer.NewLogConsumer("lc2", "cg1", topic, offsetsTopic, partitionsTopic, "localhost:12000", []string{"localhost:19092", "localhost:29092", "localhost:39092"}, 60000, &pm2)
 	if err != nil {
 		t.Fatal(err)
 	}
