@@ -13,6 +13,8 @@ You will want to create this with a relatively high partition count, and ensure 
 
 ### Offset topic
 
+The offset topic is used to track the virtual offsets of the virtual consumers of virtual queues.
+
 The offset topic (env `KAFKA_OFFSET_TOPIC`) should have **the exact same number of partitions as the data topic always**.
 
 ### Partitions topic
@@ -28,3 +30,25 @@ This topic is very low throughput, and should have a single partition.
 Unlike other distributed systems, VirtualQueues will NOT forward requests to the correct node. Consumers should be partition-aware by downloading the partition assignment map on boot and intervals (and when ever a 409 conflict is returned), and should always go direct to the respective node for a given virtual queue. This means that consumers need to support the same partitioning function (murmur2 with a specific seed) that is used here. An example in Go is provided in `utils.Go#GetPartition`.
 
 Consumer-aware partitioning massively reduces median and tail latencies, especially under high load.
+
+### Named consumers
+
+You can optionally use named consumers when reading queues. Each named consumer will have its offset tracked.
+
+You can always manually read from a provided offset.
+
+A consumer can reset its offset by providing an `Offset` and `AllowRewind` at ack time. Without the `AllowRewind` option, the server will reject an offset that is below the previously tracked offset.
+
+A named consumer is responsible for coordination consumption: That is to say, if two processes use the same named consumer they will frequently both miss records (due to acks) and process duplicate records (no exclusive assignment).
+
+Named consumers should also be aware when to delete themselves, as their offsets will be retained both in memory and in the offset queue.
+
+## Queues
+
+Queues are created on demand when the first record is written to them.
+
+### Deleting a queue
+
+Queues can be deleted when they have completed processing. This is useful to restrict the working set on disk from growing.
+
+Deleting a queue will also automatically delete all tracked consumers for that queue.
