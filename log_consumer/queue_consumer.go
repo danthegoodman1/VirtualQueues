@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/danthegoodman1/VirtualQueues/utils"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/errgroup"
+	"time"
 )
 
 func (lc *LogConsumer) DropPartitionConsumers(partition int32) {
@@ -155,4 +159,39 @@ func (lc *LogConsumer) GetConsumerOffset(queue, consumer string) *ConsumerOffset
 	}
 
 	return nil
+}
+
+func (lc *LogConsumer) DeleteConsumer(ctx context.Context, queue, consumer string) error {
+	adm := kadm.NewClient(lc.OffsetClient)
+
+	partition := utils.GetPartition(queue, lc.numPartitions)
+
+	// Create dynamic client for consuming
+	client, err := kgo.NewClient(
+		kgo.SeedBrokers(lc.seedBrokers...),
+		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
+			lc.offsetTopic: {
+				partition: kgo.NewOffset().At(0),
+			},
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("error in kgo.NewClient: %w", err)
+	}
+
+	g := errgroup.Group{}
+
+	g.Go(func() error {
+		t := time.NewTicker(time.Millisecond * 100) // dispatch every 100ms
+		for {
+
+		}
+	})
+
+	err = g.Wait()
+	if err != nil {
+		return fmt.Errorf("error in delete consumer group batch errgroup: %w", err)
+	}
+
+	adm.DeleteRecords(ctx, map[string]map[int32]kadm.Offset{})
 }

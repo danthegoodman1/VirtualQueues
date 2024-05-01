@@ -34,6 +34,7 @@ type (
 		MyPartitions *partitions.Map
 		// PartitionMap is all partitions
 		// Map of remote addresses for a given partition
+		numPartitions    uint32
 		partitions       map[int32]string
 		partitionsMu     *sync.RWMutex
 		DataClient       *kgo.Client
@@ -75,7 +76,7 @@ type (
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map, numPartitions uint32) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
@@ -84,6 +85,7 @@ func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partition
 		dataTopic:          dataTopic,
 		offsetTopic:        offsetTopic,
 		partitionTopic:     partitionTopic,
+		numPartitions:      numPartitions,
 		consumerOffsets:    map[consumerKey]*ConsumerOffset{},
 		consumerOffsetsMu:  &sync.Mutex{},
 		partitionConsumers: syncx.Map[consumerKey, int32]{},

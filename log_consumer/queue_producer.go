@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"strings"
 )
@@ -36,4 +37,14 @@ func (lc *LogConsumer) PublishRecord(ctx context.Context, queue string, recordVa
 	}
 
 	return nil
+}
+
+func (lc *LogConsumer) DeleteQueue(ctx context.Context, queue string) error {
+	// TODO: Scan offsets for a queue from the data partition
+	// TODO: In batches, delete data from queue
+	adm := kadm.NewClient(lc.DataClient)
+	adm.DeleteRecords(ctx, map[string]map[int32]kadm.Offset{})
+
+	// TODO: Get offsets for consumers
+	// TODO: Delete consumers
 }
