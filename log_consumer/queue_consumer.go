@@ -61,6 +61,7 @@ func (lc *LogConsumer) ConsumeQueueFromOffset(ctx context.Context, queue string,
 				partition: kgo.NewOffset().At(offset),
 			},
 		}),
+		kgo.DisableAutoCommit(),
 	)
 	if err != nil {
 		return fmt.Errorf("error in kgo.NewClient: %w", err)
