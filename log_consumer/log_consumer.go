@@ -52,6 +52,7 @@ type (
 		// Map of consumers to their offsets. Key is consumerKey
 		consumerOffsets   map[consumerKey]*ConsumerOffset
 		consumerOffsetsMu *sync.Mutex
+		consumerRetention *time.Duration
 
 		// Map of consumer to partition, used for clearing consumer offsets when a partition is dropped. Key is consumerKey
 		partitionConsumers syncx.Map[consumerKey, int32]
@@ -68,14 +69,15 @@ type (
 	}
 
 	ConsumerOffset struct {
-		Offset int64
+		Offset  int64
+		Created time.Time
 	}
 )
 
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map, options ...LogConsumerOption) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
@@ -90,6 +92,9 @@ func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partition
 		partitionsMu:       &sync.RWMutex{},
 		partitions:         map[int32]string{},
 		advertiseAddr:      advertiseAddr,
+	}
+	for _, opt := range options {
+		opt(consumer)
 	}
 	logger.Debug().Msgf("using partition log %s for seeds %+v", dataTopic, seeds)
 
@@ -380,9 +385,15 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 			lc.consumerOffsetsMu.Lock()
 			defer lc.consumerOffsetsMu.Unlock()
 			for _, offsetRecord := range consumerMap {
+				// We don't need to add it
+				if lc.consumerRetention != nil && time.Now().Sub(offsetRecord.Created) > *lc.consumerRetention {
+					logger.Debug().Msgf("IGORING RECOVERY, EXPIRED")
+					continue
+				}
 				ck := createConsumerKey(offsetRecord.Queue, offsetRecord.Consumer)
 				lc.consumerOffsets[ck] = &ConsumerOffset{
-					Offset: offsetRecord.Offset,
+					Offset:  offsetRecord.Offset,
+					Created: offsetRecord.Created,
 				}
 			}
 

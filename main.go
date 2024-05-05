@@ -31,6 +31,12 @@ func main() {
 
 	pm := partitions.Map{}
 
+	var opts []log_consumer.LogConsumerOption
+
+	if utils.Env_ConsumerRetention != 0 && utils.Env_ConsumerRetentionInterval != 0 {
+		opts = append(opts, log_consumer.ConsumerRetention(time.Duration(utils.Env_ConsumerRetention)*time.Second, time.Duration(utils.Env_ConsumerRetentionInterval)*time.Second, utils.Env_ConsumerRetentionMaxOps))
+	}
+
 	var logConsumer *log_consumer.LogConsumer
 	g.Go(func() (err error) {
 		logConsumer, err = log_consumer.NewLogConsumer(utils.Env_InstanceID, utils.Env_ConsumerGroup, utils.Env_KafkaDataTopic, utils.Env_KafkaOffsetTopic, utils.Env_KafkaDataTopic, utils.Env_AdvertiseAddr, strings.Split(utils.Env_KafkaSeeds, ","), utils.Env_KafkaSessionMs, &pm)
