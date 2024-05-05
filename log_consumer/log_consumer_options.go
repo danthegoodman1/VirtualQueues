@@ -6,7 +6,7 @@ import (
 
 type LogConsumerOption func(consumer *LogConsumer)
 
-// Creates an interval that will clear consumers that have not been updated in the retention window.
+// ConsumerRetention creates an interval that will clear consumers that have not been updated in the retention window.
 // maxOps determines how many items to iterate over on the table max (control lock time).
 // 0 will always do the full map
 func ConsumerRetention(consumerRetention time.Duration, interval time.Duration, maxOps int64) LogConsumerOption {
