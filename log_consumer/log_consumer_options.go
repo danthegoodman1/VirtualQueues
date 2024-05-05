@@ -21,18 +21,25 @@ func (lc *LogConsumer) launchClearExpiredConsumersInterval(consumerRetention tim
 		go func() {
 			lc.consumerOffsetsMu.Lock()
 			defer lc.consumerOffsetsMu.Unlock()
+
 			ops := int64(0)
+			var expiredConsumers []consumerKey // prevents nested locks
 			for key, offset := range lc.consumerOffsets {
 				if time.Now().Sub(offset.Created) > consumerRetention {
 					delete(lc.consumerOffsets, key)
-					lc.partitionConsumers.Delete(key)
+					expiredConsumers = append(expiredConsumers, key)
 				}
 
 				ops++
 				if maxOps > 0 && ops >= maxOps {
 					// We have hit the max, return
-					return
+					break
 				}
+			}
+
+			// prevents nested locks
+			for _, key := range expiredConsumers {
+				lc.partitionConsumers.Delete(key)
 			}
 		}()
 	}
