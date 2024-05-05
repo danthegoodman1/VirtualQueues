@@ -11,6 +11,7 @@ type LogConsumerOption func(consumer *LogConsumer)
 // 0 will always do the full map
 func ConsumerRetention(consumerRetention time.Duration, interval time.Duration, maxOps int64) LogConsumerOption {
 	return func(consumer *LogConsumer) {
+		consumer.consumerRetention = &consumerRetention
 		go consumer.launchClearExpiredConsumersInterval(consumerRetention, maxOps, time.NewTicker(interval))
 	}
 }

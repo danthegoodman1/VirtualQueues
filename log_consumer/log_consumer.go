@@ -52,6 +52,7 @@ type (
 		// Map of consumers to their offsets. Key is consumerKey
 		consumerOffsets   map[consumerKey]*ConsumerOffset
 		consumerOffsetsMu *sync.Mutex
+		consumerRetention *time.Duration
 
 		// Map of consumer to partition, used for clearing consumer offsets when a partition is dropped. Key is consumerKey
 		partitionConsumers syncx.Map[consumerKey, int32]
@@ -384,6 +385,11 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 			lc.consumerOffsetsMu.Lock()
 			defer lc.consumerOffsetsMu.Unlock()
 			for _, offsetRecord := range consumerMap {
+				// We don't need to add it
+				if lc.consumerRetention != nil && time.Now().Sub(offsetRecord.Created) > *lc.consumerRetention {
+					logger.Debug().Msgf("IGORING RECOVERY, EXPIRED")
+					continue
+				}
 				ck := createConsumerKey(offsetRecord.Queue, offsetRecord.Consumer)
 				lc.consumerOffsets[ck] = &ConsumerOffset{
 					Offset:  offsetRecord.Offset,
