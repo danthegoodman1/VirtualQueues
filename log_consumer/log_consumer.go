@@ -68,14 +68,15 @@ type (
 	}
 
 	ConsumerOffset struct {
-		Offset int64
+		Offset  int64
+		Created time.Time
 	}
 )
 
 var ErrPollFetches = errors.New("error polling fetches")
 
 // sessionMS must be above 2 seconds (default 60_000)
-func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map) (*LogConsumer, error) {
+func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partitionTopic, advertiseAddr string, seeds []string, sessionMS int64, partitionsMap *partitions.Map, options ...LogConsumerOption) (*LogConsumer, error) {
 	consumer := &LogConsumer{
 		MyPartitions:       partitionsMap,
 		ConsumerGroup:      consumerGroup,
@@ -90,6 +91,9 @@ func NewLogConsumer(instanceID, consumerGroup, dataTopic, offsetTopic, partition
 		partitionsMu:       &sync.RWMutex{},
 		partitions:         map[int32]string{},
 		advertiseAddr:      advertiseAddr,
+	}
+	for _, opt := range options {
+		opt(consumer)
 	}
 	logger.Debug().Msgf("using partition log %s for seeds %+v", dataTopic, seeds)
 
@@ -382,7 +386,8 @@ func (lc *LogConsumer) pollConsumerOffsets(c context.Context) error {
 			for _, offsetRecord := range consumerMap {
 				ck := createConsumerKey(offsetRecord.Queue, offsetRecord.Consumer)
 				lc.consumerOffsets[ck] = &ConsumerOffset{
-					Offset: offsetRecord.Offset,
+					Offset:  offsetRecord.Offset,
+					Created: offsetRecord.Created,
 				}
 			}
 

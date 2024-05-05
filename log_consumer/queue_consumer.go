@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"time"
 )
 
 func (lc *LogConsumer) DropPartitionConsumers(partition int32) {
@@ -99,9 +100,10 @@ func (lc *LogConsumer) ConsumeQueueFromOffset(ctx context.Context, queue string,
 }
 
 type ConsumerOffsetRecord struct {
-	Offset   int64  `json:"o"`
-	Consumer string `json:"c"`
-	Queue    string `json:"q"`
+	Offset   int64     `json:"o"`
+	Consumer string    `json:"c"`
+	Queue    string    `json:"q"`
+	Created  time.Time `json:"t"`
 }
 
 func (c ConsumerOffsetRecord) MustEncode() []byte {
@@ -114,10 +116,12 @@ func (c ConsumerOffsetRecord) MustEncode() []byte {
 }
 
 func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partition int32, queue, consumer string, offset int64) error {
+	created := time.Now()
 	offsetRecord := ConsumerOffsetRecord{
 		Consumer: consumer,
 		Offset:   offset,
 		Queue:    queue,
+		Created:  created,
 	}
 	record := &kgo.Record{
 		Key:   []byte(queue),
@@ -139,7 +143,8 @@ func (lc *LogConsumer) WritePartitionConsumerOffset(ctx context.Context, partiti
 	if !exists {
 		// New consumer
 		lc.consumerOffsets[ck] = &ConsumerOffset{
-			Offset: offset,
+			Offset:  offset,
+			Created: created,
 		}
 	} else {
 		lc.consumerOffsets[ck].Offset = offset
