@@ -30,4 +30,8 @@ var (
 	Env_GossipDebug = os.Getenv("GOSSIP_DEBUG") == "1"
 
 	Env_Profile = os.Getenv("PROFILE") == "1"
+
+	Env_ConsumerRetention         = MustEnvOrDefaultInt64("CONSUMER_RETENTION", 0)
+	Env_ConsumerRetentionInterval = MustEnvOrDefaultInt64("CONSUMER_RETENTION_INTERVAL", 0)
+	Env_ConsumerRetentionMaxOps   = MustEnvOrDefaultInt64("CONSUMER_RETENTION_MAX_OPS", 0)
 )
