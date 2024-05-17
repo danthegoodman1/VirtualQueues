@@ -52,3 +52,11 @@ Queues are created on demand when the first record is written to them.
 Queues can be deleted when they have completed processing. This is useful to restrict the working set on disk from growing.
 
 Deleting a queue will also automatically delete all tracked consumers for that queue.
+
+## Transactional queueing suggestion
+
+Since this is a different system, you can run into issues with duplicate processing if you enqueue within a transaction (or missed processing if you enqueue after). Each have their own risks.
+
+At least once (queue during txn) is the preferred solution, but user-invoked transactions (e.g. api endpoint) are far more likely to restart than internally managed transactions (e.g. background task).
+
+Combining a transactional outbox pattern (e.g. Apple's QuiCK) with VirtualQueues greatly reduces this risk. It still provides at-least-once semantics, but greatly reduces the chance that a transaction restarts and a message is enqueued multiple times. This is because the job to enqueue to the VirtualQueue is transactionally secure, and the execution of that job is very quick (in comparison to being part of a larger transaction).
